@@ -102,9 +102,8 @@ services:
       - "8501:8501"
     depends_on:
       - postgres
-    environment:
-      - PG_USER=${PG_USER}
-      - PG_PASS=${PG_PASS}
+    env_file:
+      - .env
     volumes:
       - ./streamlit-app:/app
     networks:
@@ -178,8 +177,10 @@ services:
       - kietcorn-network
 
   fastapi:
+    container_name: fastapi
     build: ./fastapi-app
     ports:
+      # Truy cập ở ngoài qua port 8092
       - "8092:8000"
     environment:
       - POSTGRES_HOST=postgres
@@ -187,12 +188,16 @@ services:
       - POSTGRES_DB=${PG_DB}
       - POSTGRES_USER=${PG_USER}
       - POSTGRES_PASSWORD=${PG_PASS}
-      - DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@postgres:5432/optimize
+      - DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@postgres:5432/${PG_DB}
     depends_on:
       - postgres
     restart: always
     networks:
       - kietcorn-network
+    # THÊM 2 DÒNG NÀY ĐỂ VIBECODE:
+    volumes:
+      - ./fastapi-app/app:/code/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   my-n8n-data-example:

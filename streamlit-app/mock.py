@@ -1,6 +1,5 @@
 import streamlit as st
 import json
-import time  # Thêm thư viện time để tạo độ trễ
 
 # ---------- Load personas ----------
 
@@ -11,24 +10,16 @@ def load_personas():
     return {p["cluster_id"]: p for p in data}
 
 
-# ---------- Mock data & Prompts ----------
+# ---------- Mock data ----------
 
-BEHAVIOR_PROMPT = """VAI TRÒ:
-Bạn là một trợ lý tin tức chuyên biệt, được tinh chỉnh riêng theo hành vi và hồ sơ rủi ro của người dùng. 
-
-HỒ SƠ NGƯỜI DÙNG:
-Dữ liệu lịch sử cho thấy người dùng này đặc biệt quan tâm tới:
-- Công nghệ lõi: Trí tuệ nhân tạo (AI) và xu hướng công nghệ mới.
-- An ninh mạng: Bảo mật tài khoản, phòng chống hacker.
-- Rủi ro tài chính: Các vụ gian lận, lừa đảo, cho vay nặng lãi, biến động chứng khoán.
-- Pháp lý: Luật kinh tế và luật hình sự liên quan đến tội phạm công nghệ/tài chính.
-
-HƯỚNG DẪN TRẢ LỜI (QUAN TRỌNG):
-Khi trả lời dựa trên [NGỮ CẢNH], bạn BẮT BUỘC phải bám sát các tiêu chí sau:
-1. GÓC ĐỘ TIẾP CẬN: Luôn xoáy sâu vào các rủi ro thực tiễn, cảnh báo thiệt hại hoặc cơ hội phòng tránh.
-2. VĂN PHONG CHUYÊN MÔN: Sử dụng thuật ngữ phân tích kỹ thuật khi nói về AI/Công nghệ, và giải thích các khía cạnh pháp luật một cách rành mạch, sắc bén.
-3. CẤU TRÚC: Đi thẳng vào vấn đề cốt lõi liên quan đến tài sản, dữ liệu hoặc quyền lợi của người dùng trước, sau đó mới nêu chi tiết bối cảnh.
-4. GIỚI HẠN: Chỉ dùng thông tin trong [NGỮ CẢNH], không tự bịa đặt."""
+BEHAVIOR_PROMPT = (
+    '''Bạn là trợ lý tin tức được tinh chỉnh theo hành vi đọc của người dùng.
+    Phân tích lịch sử đọc cho thấy người dùng quan tâm đến: AI và xu hướng công nghệ mới, bảo mật tài khoản và an ninh mạng, các vụ gian lận tài chính và cho vay nặng lãi,
+    thị trường chứng khoán và rủi ro đầu tư, pháp luật liên quan đến kinh tế và tội phạm.
+    Khi trả lời, hãy ưu tiên góc độ cảnh báo rủi ro thực tiễn, phân tích kỹ thuật khi liên quan đến AI/công nghệ,
+    và giải thích pháp luật một cách dễ hiểu.
+    '''
+)
 
 DEFAULT_SYSTEM_PROMPT = """VAI TRÒ:
 Bạn là một trợ lý tóm tắt tin tức AI chuyên nghiệp và trung lập.
@@ -39,7 +30,8 @@ Trả lời câu hỏi của người dùng MỘT CÁCH NGẮN GỌN VÀ CHÍNH 
 NGUYÊN TẮC BẮT BUỘC:
 1. KHÔNG tự bịa đặt thông tin (No Hallucination).
 2. KHÔNG sử dụng kiến thức nền tảng có sẵn của bạn.
-3. Trình bày khách quan, không đưa ra quan điểm cá nhân."""
+3. Nếu [NGỮ CẢNH] không chứa đủ thông tin để trả lời, hãy nói: "Dựa trên các bài báo hiện tại, không có đủ thông tin để trả lời câu hỏi này."
+4. Trình bày khách quan, không đưa ra quan điểm cá nhân."""
 
 MOCK_QA = {
     "quy trình bầu chủ tịch nước và thủ tướng khác nhau ở điểm nào?": {
@@ -188,16 +180,13 @@ with tab1:
     st.subheader("Baseline RAG")
     st.caption("Không có Persona, chỉ retrieve và trả lời.")
     with st.expander("System Prompt"):
-        st.code(DEFAULT_SYSTEM_PROMPT, language="text")
+        st.code(DEFAULT_SYSTEM_PROMPT, language=None)
 
-    q1 = st.text_input("Câu hỏi", key="q1", placeholder="Thử: " + QUESTIONS[0])
+    q1 = st.text_input("Câu hỏi", key="q1",
+                        placeholder="Thử: " + QUESTIONS[0])
     if st.button("Gửi", key="btn1") and q1:
-        with st.spinner("Đang xử lý..."):
-            time.sleep(7)  # Độ trễ 7 giây
-            answer = get_answer(q1, "baseline")
-            
         st.markdown("**Trả lời:**")
-        st.write(answer)
+        st.write(get_answer(q1, "baseline"))
 
 
 # ---------- Tab 2 ----------
@@ -206,16 +195,13 @@ with tab2:
     st.subheader("RAG + Persona")
     st.caption(f"Persona: {personas[selected_id]['persona']['name']}")
     with st.expander("System Prompt", expanded=True):
-        st.code(persona_system_prompt, language="text")
+        st.code(persona_system_prompt, language=None)
 
-    q2 = st.text_input("Câu hỏi", key="q2", placeholder="Thử: " + QUESTIONS[1])
+    q2 = st.text_input("Câu hỏi", key="q2",
+                        placeholder="Thử: " + QUESTIONS[1])
     if st.button("Gửi", key="btn2") and q2:
-        with st.spinner("Đang xử lý..."):
-            time.sleep(7)  # Độ trễ 7 giây
-            answer = get_answer(q2, selected_id)
-            
         st.markdown("**Trả lời:**")
-        st.write(answer)
+        st.write(get_answer(q2, selected_id))
 
 
 # ---------- Tab 3 ----------
@@ -224,16 +210,13 @@ with tab3:
     st.subheader("RAG + Behavior Prompt")
     st.caption("Prompt được sinh ra từ lịch sử đọc của người dùng.")
     with st.expander("Behavior Prompt", expanded=True):
-        st.code(BEHAVIOR_PROMPT, language="text")
+        st.code(BEHAVIOR_PROMPT, language=None)
 
-    q3 = st.text_input("Câu hỏi", key="q3", placeholder="Thử: " + QUESTIONS[2])
+    q3 = st.text_input("Câu hỏi", key="q3",
+                        placeholder="Thử: " + QUESTIONS[2])
     if st.button("Gửi", key="btn3") and q3:
-        with st.spinner("Đang xử lý..."):
-            time.sleep(7)  # Độ trễ 7 giây
-            answer = get_answer(q3, "behavior")
-            
         st.markdown("**Trả lời:**")
-        st.write(answer)
+        st.write(get_answer(q3, "behavior"))
 
 
 # ---------- Tab 4 ----------
@@ -251,13 +234,11 @@ with tab4:
     with st.expander("Xem System Prompts"):
         for label, sp in configs:
             st.markdown(f"**{label}**")
-            st.code(sp, language="text")
+            st.code(sp, language=None)
 
-    q4 = st.text_input("Câu hỏi", key="q4", placeholder="Thử bất kỳ câu hỏi nào ở sidebar")
+    q4 = st.text_input("Câu hỏi", key="q4",
+                        placeholder="Thử bất kỳ câu hỏi nào ở sidebar")
     if st.button("So sánh", key="btn4") and q4:
-        with st.spinner("Đang xử lý song song..."):
-            time.sleep(7)  # Độ trễ 7 giây cho toàn bộ tiến trình so sánh
-            
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("**Baseline**")

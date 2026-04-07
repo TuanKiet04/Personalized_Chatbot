@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsPersona - Không gian tin tức của bạn</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap');
+
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --accent: #eff6ff;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+        }
+
+        /* Header chuyên nghiệp */
+        header {
+            background: var(--card-bg);
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .logo {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .user-nav {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        .logout-btn {
+            padding: 0.5rem 1rem;
+            background: #fee2e2;
+            color: #ef4444;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #fecaca;
+        }
+
+        /* Container chính */
+        main {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            border-left: 5px solid var(--primary);
+            padding-left: 1rem;
+        }
+
+        /* Grid hiển thị bài báo */
+        .news-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .article-card {
+            background: var(--card-bg);
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .article-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .topic-badge {
+            display: inline-block;
+            background: var(--accent);
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .article-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.15rem;
+            margin: 0 0 0.75rem 0;
+            line-height: 1.4;
+        }
+
+        .article-link {
+            color: var(--text-main);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .article-link:hover {
+            color: var(--primary);
+        }
+
+        .article-snippet {
+            font-size: 0.9rem;
+            color: var(--text-sub);
+            margin-bottom: 1rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .article-footer {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Nút bấm nổi */
+        .chat-button {
+            position: fixed; bottom: 30px; right: 30px;
+            width: 60px; height: 60px; background: var(--primary);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 1.5rem; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4); z-index: 1001;
+        }
+
+        /* Khung Pop-up Chat */
+        .chat-popup {
+            position: fixed; bottom: 100px; right: 30px;
+            width: 350px; height: 450px; background: white;
+            border-radius: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            display: none; flex-direction: column; overflow: hidden; z-index: 1001;
+        }
+
+        .chat-header {
+            background: var(--primary); color: white; padding: 15px;
+            display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+        }
+
+        .chat-header button { background: none; border: none; color: white; cursor: pointer; }
+
+        .chat-content { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background: #f1f5f9; }
+
+        .msg { padding: 8px 12px; border-radius: 12px; max-width: 80 percent; font-size: 0.9rem; }
+        .bot { background: white; align-self: flex-start; border: 1px solid #e2e8f0; }
+        .user { background: var(--primary); color: white; align-self: flex-end; }
+
+        .chat-input-area { padding: 10px; border-top: 1px solid #e2e8f0; display: flex; gap: 5px; }
+        .chat-input-area input { flex: 1; border: 1px solid #ddd; padding: 8px; border-radius: 5px; outline: none; }
+        .chat-input-area button { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <a href="#" class="logo">📰 NewsPersona</a>
+        <div class="user-nav">
+            <span class="user-name">Chào, <b>{{ username }}</b></span>
+            <a href="/logout" class="logout-btn">Đăng xuất</a>
+        </div>
+    </header>
+
+    <main>
+        <h2 class="section-title">Khám phá tin tức</h2>
+        
+        <div class="news-grid">
+            {% if articles %}
+                {% for art in articles %}
+                <div class="article-card" data-article-id="{{ art.id }}">
+                    <div>
+                        <span class="topic-badge">{{ art.topic }}</span>
+                        <h3 class="article-title">
+                            <a href="{{ art.url }}" target="_blank" class="article-link">
+                                {{ art.title }}
+                            </a>
+                        </h3>
+                        <p class="article-snippet">{{ art.snippet }}...</p>
+                    </div>
+                    <div class="article-footer">
+                        <span>🕒 {{ art.published_at }}</span>
+                        <span>#{{ art.id }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="grid-column: 1/-1; text-align: center; padding: 3rem;">
+                    <p style="color: var(--text-sub);">📭 Hiện chưa có bài báo nào để hiển thị.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; justify-content: center; gap: 1rem;">
+            {% if prev_page %}
+                <a href="/news?page={{ prev_page }}" style="padding: 10px 20px; background: #ddd; border-radius: 5px; text-decoration: none;">⬅️ Trang trước</a>
+            {% endif %}
+            <a href="/news?page={{ next_page }}" style="padding: 10px 20px; background: var(--primary); color: white; border-radius: 5px; text-decoration: none;">Trang sau ➡️</a>
+        </div>
+
+        <div id="chat-circle" class="chat-button">
+            💬
+        </div>
+        
+        <div id="chat-box" class="chat-popup">
+            <div class="chat-header">
+                <span>AI News Assistant</span>
+                <button id="close-chat">✖</button>
+            </div>
+            <div id="chat-messages" class="chat-content">
+                <div class="msg bot">Chào {{ username }}! Bạn muốn hỏi gì về tin tức hôm nay không?</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="user-input" placeholder="Nhập câu hỏi...">
+                <button id="send-btn">Gửi</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // JS thu thập hành vi click ngầm
+        document.querySelectorAll('.article-link').forEach(link => {
+            link.addEventListener('click', function() {
+                const articleId = this.closest('.article-card').dataset.articleId;
+                fetch(`/log-interaction/${articleId}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => console.log("Recorded:", data))
+                .catch(e => console.error("Log error:", e));
+            });
+        });
+
+        const chatCircle = document.getElementById('chat-circle');
+        const chatBox = document.getElementById('chat-box');
+        const closeChat = document.getElementById('close-chat');
+        const sendBtn = document.getElementById('send-btn');
+        const userInput = document.getElementById('user-input');
+        const chatMessages = document.getElementById('chat-messages');
+
+        // Đóng/Mở Chat
+        chatCircle.onclick = () => chatBox.style.display = 'flex';
+        closeChat.onclick = () => chatBox.style.display = 'none';
+
+        // Gửi tin nhắn
+        sendBtn.onclick = async () => {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // Hiển thị tin nhắn user
+            appendMessage(text, 'user');
+            userInput.value = '';
+
+            // Gọi API của FastAPI (chúng ta sẽ viết ở bước 3)
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                appendMessage(data.response, 'bot');
+            } catch (e) {
+                appendMessage("Lỗi kết nối server rồi!", 'bot');
+            }
+        };
+
+        function appendMessage(text, side) {
+            const div = document.createElement('div');
+            div.className = `msg ${side}`;
+            div.innerText = text;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+    </script>
+</body>
+</html>

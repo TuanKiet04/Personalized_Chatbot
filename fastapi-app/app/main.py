@@ -1,232 +1,183 @@
-# fastapi-app/app/main.py
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+# app/main.py
+from fastapi import FastAPI, Request, Form, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from typing import List, Optional
-import os
+from sqlalchemy import text
 
-from app.database import get_db, engine
-from app import models, schemas, auth
-from app.chatbot import get_chat_response
+from app.database import engine, Base, get_db
+from app.models import User, UserInteraction
 
-# Tạo tables nếu chưa có
-models.Base.metadata.create_all(bind=engine)
+# Tự động tạo bảng trong DB nếu chưa có
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI(
-    title="News Chatbot API",
-    description="API để đọc tin tức và chat với AI về các bài báo",
-    version="1.0.0"
-)
+app = FastAPI()
+templates = Jinja2Templates(directory="app/templates")
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Trong production nên giới hạn cụ thể
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-@app.get("/", include_in_schema=False)
-async def index():
-    from fastapi.responses import FileResponse
-    return FileResponse("static/index.html")
-
-# ============================================
-# HEALTH CHECK
-# ============================================
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "service": "fastapi-news"}
-
-
-# ============================================
-# AUTHENTICATION ROUTES
-# ============================================
-@app.post("/register", response_model=schemas.UserResponse)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Đăng ký tài khoản mới"""
-    # Check user tồn tại
-    db_user = db.query(models.User).filter(
-        (models.User.username == user.username) | 
-        (models.User.email == user.email)
-    ).first()
+@app.post("/login")
+async def process_login(
+    request: Request, 
+    username: str = Form(...), 
+    password: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    # Tìm user theo username
+    user = db.query(User).filter(User.username == username).first()
     
-    if db_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Username hoặc email đã tồn tại"
+    # Nếu chưa có user, tạo mới (Vibecode: chế tạm email từ username để ko lỗi Not Null)
+    if not user:
+        new_user = User(
+            username=username, 
+            email=f"{username}@example.com", # Tạo tạm email
+            password_hash=password            # Lưu tạm pass thô, sau này dùng pass_hash sau
         )
-    
-    # Tạo user mới
-    hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(
-        username=user.username,
-        email=user.email,
-        password_hash=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return db_user
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        user = new_user
 
+    # Kiểm tra mật khẩu (so sánh với password_hash trong DB của bạn)
+    if user.password_hash == password:
+        response = RedirectResponse(url="/news", status_code=302)
+        response.set_cookie(key="session_user", value=username)
+        return response
+    else:
+        return templates.TemplateResponse("login.html", {
+            "request": request, 
+            "error_msg": "Sai mật khẩu!"
+        })
 
-@app.post("/token", response_model=schemas.Token)
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+@app.get("/login", response_class=HTMLResponse)
+async def get_login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/log-interaction/{article_id}")
+async def log_interaction(
+    article_id: int, 
+    request: Request, 
     db: Session = Depends(get_db)
 ):
-    """Login và nhận JWT token"""
-    user = db.query(models.User).filter(
-        models.User.username == form_data.username
-    ).first()
+    # Lấy username từ cookie để biết ai đang click
+    username = request.cookies.get("session_user")
+    if not username:
+        return {"status": "ignored"}
     
-    if not user or not auth.verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Username hoặc password không đúng",
-            headers={"WWW-Authenticate": "Bearer"},
+    user = db.query(User).filter(User.username == username).first()
+    if user:
+        # Lưu hành vi click vào DB
+        new_interaction = UserInteraction(
+            user_id=user.id,
+            article_id=article_id,
+            action="click"
         )
+        db.add(new_interaction)
+        db.commit()
+        return {"status": "success", "article_id": article_id}
     
-    access_token = auth.create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"status": "user_not_found"}
 
+@app.get("/register", response_class=HTMLResponse)
+async def get_register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
 
-@app.get("/me", response_model=schemas.UserResponse)
-def get_current_user_info(
-    token: str = Depends(oauth2_scheme),
+@app.post("/register")
+async def process_register(
+    request: Request, 
+    username: str = Form(...), 
+    email: str = Form(...),
+    password: str = Form(...), 
     db: Session = Depends(get_db)
 ):
-    """Lấy thông tin user hiện tại"""
-    user = auth.get_current_user(token, db)
-    return user
+    # 1. Kiểm tra username hoặc email đã tồn tại chưa
+    existing_user = db.query(User).filter((User.username == username) | (User.email == email)).first()
+    if existing_user:
+        return templates.TemplateResponse("register.html", {
+            "request": request, 
+            "error_msg": "Username hoặc Email đã được sử dụng!"
+        })
 
-
-# ============================================
-# NEWS ROUTES
-# ============================================
-@app.get("/news", response_model=List[schemas.NewsArticle])
-def get_news(
-    skip: int = 0,
-    limit: int = 20,
-    topic: Optional[str] = None,
-    search: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Lấy danh sách tin tức
-    - skip: bỏ qua n bài đầu (pagination)
-    - limit: số lượng bài trả về
-    - topic: lọc theo chủ đề (Cong Nghe, Thoi Su, ...)
-    - search: tìm kiếm trong title
-    """
-    query = db.query(models.RawData).order_by(models.RawData.published_at.desc())
-    
-    if topic:
-        query = query.filter(models.RawData.topic == topic)
-    
-    if search:
-        query = query.filter(models.RawData.title.contains(search))
-    
-    articles = query.offset(skip).limit(limit).all()
-    return articles
-
-
-@app.get("/news/{article_id}", response_model=schemas.NewsArticle)
-def get_news_detail(article_id: int, db: Session = Depends(get_db)):
-    """Lấy chi tiết 1 bài báo"""
-    article = db.query(models.RawData).filter(models.RawData.id == article_id).first()
-    
-    if not article:
-        raise HTTPException(status_code=404, detail="Không tìm thấy bài báo")
-    
-    return article
-
-
-@app.get("/topics")
-def get_topics(db: Session = Depends(get_db)):
-    """Lấy danh sách các chủ đề có sẵn"""
-    topics = db.query(models.RawData.topic).distinct().all()
-    return {"topics": [t[0] for t in topics if t[0]]}
-
-
-# ============================================
-# CHAT ROUTES
-# ============================================
-@app.post("/chat", response_model=schemas.ChatResponse)
-def chat(
-    request: schemas.ChatRequest,
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    """
-    Chat với AI về tin tức
-    - question: câu hỏi của user
-    - context_limit: số lượng bài báo liên quan để tham khảo
-    """
-    user = auth.get_current_user(token, db)
-    
-    # Gọi chatbot
-    response = get_chat_response(
-        question=request.question,
-        db=db,
-        context_limit=request.context_limit
+    # 2. Tạo user mới (Ở phase này ta vẫn lưu pass thô theo ý bạn, sau này sẽ hash sau)
+    new_user = User(
+        username=username,
+        email=email,
+        password_hash=password
     )
     
-    # Lưu lịch sử chat
-    chat_history = models.ChatHistory(
-        user_id=user.id,
-        message=request.question,
-        response=response["answer"]
-    )
-    db.add(chat_history)
-    db.commit()
+    try:
+        db.add(new_user)
+        db.commit()
+        # Đăng ký xong cho đăng nhập luôn
+        response = RedirectResponse(url="/news", status_code=302)
+        response.set_cookie(key="session_user", value=username)
+        return response
+    except Exception as e:
+        db.rollback()
+        return templates.TemplateResponse("register.html", {
+            "request": request, 
+            "error_msg": "Có lỗi xảy ra khi tạo tài khoản!"
+        })
+
+# Cập nhật lại route "/" để làm trang chủ (Landing Page)
+@app.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/news", response_class=HTMLResponse)
+async def get_news_page(request: Request, db: Session = Depends(get_db), page: int = 1):
+    current_user = request.cookies.get("session_user")
+    if not current_user:
+        return RedirectResponse(url="/login")
     
+    size = 15 # Số bài mỗi trang
+    offset = (page - 1) * size
+    
+    query = text(f"""
+        SELECT id, title, url, topic, 
+               to_char(published_at, 'DD/MM/YYYY HH24:MI') as published_at, 
+               LEFT(content, 150) as snippet
+        FROM public.raw_data 
+        ORDER BY published_at DESC 
+        LIMIT {size} OFFSET {offset}
+    """)
+    
+    try:
+        result = db.execute(query).mappings().all()
+        articles = [dict(row) for row in result]
+    except Exception as e:
+        print(f"Lỗi: {e}")
+        articles = [] 
+
+    return templates.TemplateResponse("news.html", {
+        "request": request, 
+        "username": current_user,
+        "articles": articles,
+        "next_page": page + 1,
+        "prev_page": page - 1 if page > 1 else None
+    })
+
+@app.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/", status_code=302) # Sửa thành "/"
+    response.delete_cookie("session_user")
     return response
 
+from pydantic import BaseModel
 
-@app.get("/chat/history", response_model=List[schemas.ChatHistoryResponse])
-def get_chat_history(
-    limit: int = 50,
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
-):
-    """Lấy lịch sử chat của user"""
-    user = auth.get_current_user(token, db)
-    
-    history = db.query(models.ChatHistory).filter(
-        models.ChatHistory.user_id == user.id
-    ).order_by(
-        models.ChatHistory.created_at.desc()
-    ).limit(limit).all()
-    
-    return history
+class ChatRequest(BaseModel):
+    message: str
 
-
-# ============================================
-# STATISTICS (BONUS)
-# ============================================
-@app.get("/stats")
-def get_stats(db: Session = Depends(get_db)):
-    """Thống kê tổng quan"""
-    total_articles = db.query(models.RawData).count()
-    total_users = db.query(models.User).count()
+@app.post("/chat")
+async def chat_with_ai(request: ChatRequest, db: Session = Depends(get_db)):
+    # Ở Phase 2, chúng ta sẽ đưa RAG và Ollama vào đây
+    # Hiện tại trả về phản hồi giả lập để test giao diện
+    user_msg = request.message.lower()
     
-    # Đếm bài theo topic
-    from sqlalchemy import func
-    topics_count = db.query(
-        models.RawData.topic,
-        func.count(models.RawData.id)
-    ).group_by(models.RawData.topic).all()
-    
-    return {
-        "total_articles": total_articles,
-        "total_users": total_users,
-        "articles_by_topic": {topic: count for topic, count in topics_count}
-    }
+    if "xin chào" in user_msg:
+        reply = "Chào bạn! Tôi là trợ lý tin tức cá nhân hóa của bạn."
+    elif "tin tức" in user_msg:
+        reply = "Hôm nay có khá nhiều tin mới về Công nghệ và Kinh tế, bạn muốn xem chủ đề nào?"
+    else:
+        reply = f"Tôi đã nhận được câu hỏi: '{request.message}'. Tôi đang học hỏi để trả lời tốt hơn!"
+        
+    return {"response": reply}
